@@ -1,0 +1,328 @@
+---
+title: 'Loan Policy'
+---
+
+```{r}
+# Load required packages & set global options
+
+library(tidyverse)
+library(dplyr)
+library(caret)
+library(FSelectorRcpp)
+library(effectsize)
+
+# Set global options
+options(width=100)
+```
+
+## Read data
+
+```{r}
+# Load in csv data file
+loan_data <- read.csv("early_2012_2013_loan_sample_with_outcome.csv")
+```
+
+## Data Dictionary
+
+| Variable                    | Description                                                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| id                          | Unique identifier for the loan listing                                                                             |
+| member_id                   | Unique identifier for the borrower member                                                                          |
+| loan_amnt                   | The listed amount of the loan applied for by the borrower                                                          |
+| funded_amnt                 | The total amount committed to the loan at that point in time                                                       |
+| funded_amnt_inv             | The total amount committed by investors for that loan at that point in time                                        |
+| term                        | The number of payments on the loan (36 or 60 months)                                                               |
+| int_rate                    | Interest rate on the loan (%)                                                                                      |
+| installment                 | The monthly payment owed by the borrower if the loan originates                                                    |
+| grade                       | Lending Club assigned loan grade (A–G)                                                                             |
+| sub_grade                   | Lending Club assigned loan subgrade (e.g., A1, A2, B1, etc.)                                                       |
+| emp_title                   | The job title supplied by the borrower when applying for the loan                                                  |
+| emp_length                  | Employment length in years (0–10+, where 10+ means 10 or more years)                                               |
+| home_ownership              | Home ownership status (RENT, OWN, MORTGAGE, OTHER)                                                                 |
+| annual_inc                  | The self-reported annual income provided by the borrower                                                           |
+| verification_status         | Indicates if income was verified, not verified, or source verified                                                 |
+| issue_d                     | The month and year the loan was funded/issued                                                                      |
+| loan_status                 | Current status of the loan (e.g., Fully Paid, Charged Off, Current, Default)                                       |
+| pymnt_plan                  | Indicates if a payment plan has been put in place for the loan (Y/N)                                               |
+| desc                        | Loan description provided by the borrower                                                                          |
+| purpose                     | A category provided by the borrower for the loan request (e.g., debt_consolidation, credit_card, home_improvement) |
+| title                       | The loan title provided by the borrower                                                                            |
+| zip_code                    | The first 3 digits of the zip code provided by the borrower                                                        |
+| addr_state                  | The state provided by the borrower in the loan application                                                         |
+| dti                         | Debt-to-income ratio: monthly debt payments divided by monthly income                                              |
+| delinq_2yrs                 | Number of 30+ days past-due incidences in the past 2 years                                                         |
+| earliest_cr_line            | The month and year the borrower's earliest reported credit line was opened                                         |
+| inq_last_6mths              | Number of credit inquiries in the past 6 months (excluding auto/mortgage)                                          |
+| mths_since_last_delinq      | Number of months since the borrower's last delinquency                                                             |
+| mths_since_last_record      | Number of months since the last public record                                                                      |
+| open_acc                    | Number of open credit lines in the borrower's credit file                                                          |
+| pub_rec                     | Number of derogatory public records (bankruptcies, tax liens, judgments)                                           |
+| revol_bal                   | Total credit revolving balance                                                                                     |
+| revol_util                  | Revolving line utilization rate (amount of credit used relative to total revolving credit available)               |
+| total_acc                   | Total number of credit lines currently in the borrower's credit file                                               |
+| initial_list_status         | Initial listing status of the loan (W = Whole, F = Fractional)                                                     |
+| out_prncp                   | Remaining outstanding principal for the total amount funded                                                        |
+| out_prncp_inv               | Remaining outstanding principal for the portion funded by investors                                                |
+| total_pymnt                 | Payments received to date for the total amount funded                                                              |
+| total_pymnt_inv             | Payments received to date for the portion funded by investors                                                      |
+| total_rec_prncp             | Principal received to date                                                                                         |
+| total_rec_int               | Interest received to date                                                                                          |
+| total_rec_late_fee          | Late fees received to date                                                                                         |
+| recoveries                  | Post charge-off gross recovery                                                                                     |
+| collection_recovery_fee     | Post charge-off collection fee                                                                                     |
+| last_pymnt_d                | Date of last payment received                                                                                      |
+| last_pymnt_amnt             | Amount of last payment received                                                                                    |
+| next_pymnt_d                | Next scheduled payment date                                                                                        |
+| last_credit_pull_d          | Date Lending Club most recently pulled credit for this loan                                                        |
+| collections_12_mths_ex_med  | Number of collections in the past 12 months excluding medical collections                                          |
+| mths_since_last_major_derog | Months since most recent 90-day or worse rating                                                                    |
+| policy_code                 | Publicly available policy code (1 = new products not publicly available, 2 = public)                               |
+| application_type            | Indicates whether the loan is an individual or joint application                                                   |
+| acc_now_delinq              | Number of accounts on which the borrower is currently delinquent                                                   |
+| tot_coll_amt                | Total collection amounts ever owed                                                                                 |
+| tot_cur_bal                 | Total current balance of all accounts                                                                              |
+| total_credit_rv             | Total revolving credit limit/high credit                                                                           |
+| loan_is_bad                 | Binary target variable indicating if the loan defaulted or was charged off (1 = bad, 0 = good)                     |
+
+## Basic data quality & integrity check
+
+```{r}
+# Show head of data
+head(loan_data,10)
+
+# Structure of dataset
+str(loan_data)
+
+# Summary statistics for numeric and categorical variables
+summary(loan_data)
+
+# Count missing values per column
+# No major issues identified
+colSums(is.na(loan_data))
+
+# Identify duplicate rows -> remove where necessary
+# No duplicates identified
+duplicates <- loan_data[duplicated(loan_data), ]
+nrow(duplicates)
+
+# Drop of current loans
+loan_data <- loan_data %>%
+  filter(loan_status != "Current")
+  
+# Create bad_flag variable
+
+bad_status <- c("Charged Off", "Default", "Late (31-120 days)", "Late (16-30 days)", "In Grace Period")
+
+loan_data <- loan_data %>%
+  mutate(bad_flag = case_when(
+      loan_status %in% bad_status ~ 1,
+      loan_status == "Fully Paid" ~ 0,
+      TRUE ~ NA_real_ ))
+
+# Interest Rate cleanup (remove %)
+if(is.character(loan_data$int_rate)) {
+  loan_data$int_rate <- as.numeric(gsub("%", "", loan_data$int_rate))
+}
+
+# Convert character predictors to factors
+loan_data <- loan_data %>%
+  mutate(
+    # Handle emp_length NAs as a distinct category
+    emp_length = ifelse(is.na(emp_length), "Missing", as.character(emp_length)),
+    grade = factor(grade, levels = c("A", "B", "C", "D", "E", "F", "G")),
+    sub_grade = as.factor(sub_grade),
+    term = as.factor(term),
+    emp_length = as.factor(emp_length),
+    home_ownership = as.factor(home_ownership))
+```
+
+## Check and determine outliers
+
+```{r}
+#N/A
+```
+
+## Remove outliers and create new data frame
+
+```{r}
+#N/A
+```
+
+## Create summary data table
+
+```{r}
+#N/A
+```
+
+## calculation metrics
+
+```{r}
+# Net Profit = Total Payment - Funded Amount
+loan_data$net_profit <- loan_data$total_pymnt - loan_data$funded_amnt
+# ROI = Net Profit / Funded Amount
+loan_data$roi <- loan_data$net_profit / loan_data$funded_amnt
+
+# Check ROI range reasonableness
+# No extreme values found
+summary(loan_data$roi)
+
+# Create the Histogram
+ggplot(loan_data, aes(x = roi)) +
+  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "white", alpha = 0.8) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red", size = 1) +
+  
+  # Labels and Titles
+  labs(
+    title = "Distribution of Loan ROI",
+    subtitle = "Dashed line represents breakeven (0% Profit)",
+    x = "Return on Investment (ROI)",
+    y = "Number of Loans"
+  ) +
+  
+  # Clean Theme for Reports
+  theme_minimal() +
+  scale_x_continuous(labels = scales::percent)
+```
+
+## Calculate information gain
+
+```{r}
+# Select only relevant predictors to avoid noise
+ig_data <- loan_data %>%
+  select(bad_flag, grade, sub_grade, term, loan_amnt, emp_length, home_ownership, annual_inc)
+
+str(ig_data)
+
+# Calculate pure Information Gain
+ig_weights <- information_gain(formula = bad_flag ~ grade + sub_grade + term + loan_amnt + emp_length + annual_inc,
+                               data = ig_data)
+ig_weights
+
+# Format the output
+# FSelectorRcpp automatically outputs a clean dataframe with 'attributes' and 'importance'
+ig_weights_df <- ig_weights %>%
+  arrange(desc(importance))
+
+#Plot 1: Information Gain
+plot_ig <- ggplot(ig_weights_df, aes(x = reorder(attributes, importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "firebrick") +
+  coord_flip() +
+  labs(title = "Information Gain: Predicting Loan Defaults",
+       subtitle = "Calculated via Shannon Entropy (FSelectorRcpp)",
+       x = "Variable", y = "Information Gain (Bits)") +
+  theme_minimal()
+
+plot_ig
+```
+
+## Policy Application
+
+```{r}
+
+# Add columns to show if each loan would be approved under each policy
+loan_data <- loan_data %>%
+  mutate(
+    approved_A = ifelse(grade %in% c("A", "B"), 1, 0),
+    approved_B = ifelse(grade %in% c("A", "B", "C", "D"), 1, 0))
+
+# Filter the full dataset twice based on those new columns to create comparison groups
+policy_A_results <- loan_data %>%
+  filter(approved_A == 1) %>%
+  mutate(policy = "Policy A")
+
+policy_B_results <- loan_data %>%
+  filter(approved_B == 1) %>%
+  mutate(policy = "Policy B")
+
+# Combine results for comparative analysis
+full_comparison <- bind_rows(policy_A_results, policy_B_results)
+
+# Create 4 buckets based on the quartiles of funded_amnt to check OEC robustness
+full_comparison$amnt_bucket <- cut(full_comparison$funded_amnt,
+                                   breaks = quantile(full_comparison$funded_amnt, probs = seq(0, 1, 0.25)),
+                                   include.lowest = TRUE, labels = FALSE)
+```
+
+## Summary stat and  t-test
+
+```{r}
+# Summary Table
+summary_stats <- full_comparison %>%
+  group_by(policy) %>%
+  summarise(
+    Loans_Approved = n(),
+    Avg_Loan_Size = mean(funded_amnt),
+    Total_Profit = sum(net_profit),
+    Avg_ROI = mean(roi),
+    Default_Rate = mean(bad_flag))
+
+print("A/B Test Results:")
+summary_stats
+
+# Approval rates 
+approval_stats <- loan_data %>%
+  summarise(
+    approval_rate_A = mean(approved_A),
+    approval_rate_B = mean(approved_B))
+
+print("Approval Rates:")
+approval_stats
+
+# Confidence intervals for ROI
+roi_confidence <- full_comparison %>%
+  group_by(policy) %>%
+  summarise(
+    mean_roi = mean(roi),
+    ci_lower = t.test(roi)$conf.int[1],
+    ci_upper = t.test(roi)$conf.int[2])
+
+print("ROI Confidence Intervals:")
+roi_confidence
+
+# Balance check to ensure comparability of policy portfolios
+balance_check <- full_comparison %>%
+  group_by(policy) %>%
+  summarise(
+    mean_income = mean(annual_inc, na.rm = TRUE),
+    mean_loan_amount = mean(loan_amnt, na.rm = TRUE),
+    mean_dti = mean(dti, na.rm = TRUE))
+
+print("Balance Check Between Policies:")
+balance_check
+
+# T-Test on ROI (Is the difference in profitability significant?)
+t_test_result <- t.test(roi ~ policy, data = full_comparison)
+
+print("Statistical Test (Difference in ROI):")
+t_test_result
+
+# Calculate Cohen's d for ROI between Policy B and Policy A
+cohens_d(full_comparison$roi ~ full_comparison$policy)
+
+ggplot(full_comparison, aes(x = roi, fill = policy)) +
+  geom_histogram(binwidth = 0.05, color = "white", alpha = 0.7, position = "identity") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  facet_wrap(~ policy) +
+  theme_minimal() +
+  labs(
+    title = "ROI Distribution: Policy A vs Policy B",
+    subtitle = "Policy B has more defaults (left spike) but more volume (total area)",
+    x = "Return on Investment (ROI)",
+    y = "Count of Loans")
+```
+
+## Stratification Robustness Check
+
+```{r}
+# Group by policy and loan amount bucket to compare Mean ROI (OEC)
+robustness_check <- full_comparison %>%
+  group_by(policy, amnt_bucket) %>%
+  summarise(
+    n = n(),
+    Mean_ROI = mean(roi),
+    .groups = 'drop')
+
+# View the results
+print("OEC Robustness Check by Loan Amount Bucket:")
+robustness_check
+```
