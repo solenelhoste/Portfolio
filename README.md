@@ -19,11 +19,9 @@ I have a background in International Business Management and recently completed 
 - Python (Pandas, NumPy, Scikit-learn)
 - SQL
 - R
-- Excel
-- Tableau / Power BI
+- Tableau
 - Optimisation Models
 - Machine Learning
-
 ---
 
 ## Featured Projects
@@ -38,8 +36,6 @@ I have a background in International Business Management and recently completed 
 - Maintained similar ROI performance
 - Supported data-driven decision making
 
-🔗 [View Project](link)
-
 ---
 
 ### 2. Supply Chain Analytics – FIFA 2026 Optimisation
@@ -47,16 +43,12 @@ I have a background in International Business Management and recently completed 
 
 **Skills Used:** Optimisation modelling, simulation, Python
 
-🔗 [View Project](link)
-
 ---
 
 ### 3. Insurance Risk Analysis Database
 **Goal:** Analyse baggage claims data to improve insurance pricing strategies.
 
 **Skills Used:** SQL, database design, risk modelling, dashboards
-
-🔗 [View Project](link)
 
 ---
 
@@ -73,5 +65,5 @@ Lancaster University & NEOMA Business School
 ## Contact
 
 📍 United Kingdom / France  
-💼 LinkedIn: [Your LinkedIn]  
-📧 Email: [Your Email]
+💼 LinkedIn: https://www.linkedin.com/in/solene-lhoste/
+📧 Email: solene.lhoste@gmail.com
